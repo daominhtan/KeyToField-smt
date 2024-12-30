@@ -1,4 +1,4 @@
-package com.github.eladleev.kafka.connect.transform.keytofield;
+package com.vng.zshort.tools.connect.transform.wrapfieldvalue;
 
 import org.apache.kafka.common.cache.Cache;
 import org.apache.kafka.common.cache.LRUCache;
@@ -22,27 +22,35 @@ import java.util.Map;
 import static org.apache.kafka.connect.transforms.util.Requirements.requireMap;
 import static org.apache.kafka.connect.transforms.util.Requirements.requireStruct;
 
-public class KeyToFieldTransform<R extends ConnectRecord<R>> implements Transformation<R> {
+public class WrapFieldValueTransform<R extends ConnectRecord<R>> implements Transformation<R> {
 
     public static final String OVERVIEW_DOC = "Add the record key to the value as a named field.";
 
     public static final ConfigDef CONFIG_DEF = new ConfigDef()
-            .define("field.name", ConfigDef.Type.STRING, "kafkaKey", ConfigDef.Importance.HIGH,
+            .define("field.name", ConfigDef.Type.STRING, "from_value", ConfigDef.Importance.HIGH,
                     "Name of the field to insert the Kafka key to")
-            .define("field.delimiter", ConfigDef.Type.STRING, "-", ConfigDef.Importance.LOW,
-                    "Delimiter to use when concatenating the key fields");
+            .define("field.result", ConfigDef.Type.STRING, "wrap_result", ConfigDef.Importance.HIGH,
+                    "Name of the field to insert the Kafka key to")
+            .define("wrapper.prefix", ConfigDef.Type.STRING, ",", ConfigDef.Importance.LOW,
+                    "Prefix to use when concatenating the key fields")
+            .define("wrapper.suffix", ConfigDef.Type.STRING, ",", ConfigDef.Importance.LOW,
+                    "Suffix to use when concatenating the key fields");
 
-    private static final String PURPOSE = "adding key to record";
-    private static final Logger LOGGER = LoggerFactory.getLogger(KeyToFieldTransform.class);
+    private static final String PURPOSE = "adding wrap value field to record";
+    private static final Logger LOGGER = LoggerFactory.getLogger(WrapFieldValueTransform.class);
     private String fieldName;
-    private String fieldDelimiter;
+    private String fieldResult;
+    private String wrapperPrefix;
+    private String wrapperSuffix;
     private Cache<Schema, Schema> schemaUpdateCache;
 
     @Override
     public void configure(Map<String, ?> props) {
         final SimpleConfig config = new SimpleConfig(CONFIG_DEF, props);
         fieldName = config.getString("field.name");
-        fieldDelimiter = config.getString("field.delimiter");
+        fieldResult = config.getString("field.result");
+        wrapperPrefix = config.getString("wrapper.prefix");
+        wrapperSuffix = config.getString("wrapper.suffix");
         schemaUpdateCache = new SynchronizedCache<>(new LRUCache<>(16));
     }
 
@@ -65,10 +73,12 @@ public class KeyToFieldTransform<R extends ConnectRecord<R>> implements Transfor
             value = requireMap(record.value(), PURPOSE);
         }
 
-        final String keyAsString = extractKeyAsString(record.keySchema(), record.key());
-        value.put(fieldName, keyAsString);
+        Object fieldValue = value.getOrDefault(fieldName, "");
+        String wrapResult = wrapperPrefix + fieldValue + wrapperSuffix;
 
-        LOGGER.trace("Key as string: {}", keyAsString);
+        value.put(fieldResult, wrapResult);
+
+        LOGGER.trace("Wrap result string: {}", wrapResult);
         return record.newRecord(
                 record.topic(),
                 record.kafkaPartition(),
@@ -86,7 +96,6 @@ public class KeyToFieldTransform<R extends ConnectRecord<R>> implements Transfor
 
         final Struct value = requireStruct(record.value(), PURPOSE);
 
-
         Schema updatedSchema = schemaUpdateCache.get(value.schema());
         LOGGER.trace("Updated schema: {}", updatedSchema);
         if (updatedSchema == null) {
@@ -100,15 +109,18 @@ public class KeyToFieldTransform<R extends ConnectRecord<R>> implements Transfor
 
         for (Field field : value.schema().fields()) {
             updatedValue.put(field.name(), value.get(field));
+            if (field.name().equals(fieldName)) {
+                Object fieldValue = value.get(fieldName);
+                if (fieldValue == null) {
+                    fieldValue = "";
+                }
+                String wrapResult = wrapperPrefix + fieldValue + wrapperSuffix;
+                updatedValue.put(fieldResult, wrapResult);
+                LOGGER.trace("Key as string: {}\nNew schema:{}", wrapResult, updatedValue.schema().fields());
+            }
         }
         LOGGER.trace("Updated value after fields: {}", updatedValue);
 
-
-        final String keyAsString = extractKeyAsString(record.keySchema(), record.key());
-
-        updatedValue.put(fieldName, keyAsString);
-
-        LOGGER.trace("Key as string: {}\nNew schema:{}", keyAsString, updatedValue.schema().fields());
         return record.newRecord(
                 record.topic(),
                 record.kafkaPartition(),
@@ -120,56 +132,15 @@ public class KeyToFieldTransform<R extends ConnectRecord<R>> implements Transfor
         );
     }
 
-    private String extractKeyAsString(Schema schema, Object key) {
-        LOGGER.trace("Extracting key as string");
-
-
-        if (!(key instanceof Struct)) {
-            return key.toString();
-        }
-
-        Struct keyStruct = (Struct) key;
-        StringBuilder keyAsStringBuilder = new StringBuilder();
-
-        // Call a recursive method to handle nested structures
-        buildKeyString(schema, keyStruct, keyAsStringBuilder);
-
-        // Remove the last field delimiter if the key is not empty and the last character is the delimiter
-        int length = keyAsStringBuilder.length();
-        while (length > 0 && keyAsStringBuilder.charAt(length - 1) == fieldDelimiter.charAt(0)) {
-            keyAsStringBuilder.setLength(--length);
-        }
-
-        LOGGER.trace("Key as string: {}", keyAsStringBuilder.toString());
-        return keyAsStringBuilder.toString();
-    }
-
-    private void buildKeyString(Schema schema, Struct keyStruct, StringBuilder keyAsStringBuilder) {
-        for (Field field : schema.fields()) {
-            if (field.schema().type() == Schema.Type.STRUCT) {
-                buildKeyString(field.schema(), keyStruct.getStruct(field.name()), keyAsStringBuilder);
-                keyAsStringBuilder.append(fieldDelimiter);
-            } else {
-                Object fieldValue = keyStruct.get(field);
-
-                if (fieldValue != null) {
-                    LOGGER.trace("field name: " + field.name());
-                    keyAsStringBuilder.append(fieldValue).append(fieldDelimiter);
-                }
-            }
-        }
-    }
-
-
     private Schema makeUpdatedSchema(Schema schema) {
         LOGGER.trace("build the updated schema");
         SchemaBuilder newSchemabuilder = SchemaUtil.copySchemaBasics(schema, SchemaBuilder.struct());
         for (org.apache.kafka.connect.data.Field field : schema.fields()) {
-                newSchemabuilder.field(field.name(), field.schema());
+            newSchemabuilder.field(field.name(), field.schema());
         }
 
-        LOGGER.trace("adding the new field: {}", fieldName);
-        newSchemabuilder.field(fieldName, Schema.OPTIONAL_STRING_SCHEMA);
+        LOGGER.trace("adding the new field: {}", fieldResult);
+        newSchemabuilder.field(fieldResult, Schema.OPTIONAL_STRING_SCHEMA);
         return newSchemabuilder.build();
     }
 

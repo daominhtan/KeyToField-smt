@@ -5,8 +5,8 @@
     <modelVersion>4.0.0</modelVersion>
 
     <!-- Define project coordinates -->
-    <groupId>com.github.eladleev.kafka.connect.transform</groupId>
-    <artifactId>key-to-field-transform</artifactId>
+    <groupId>com.com.zshort.tools.connect.transform</groupId>
+    <artifactId>wrap-field-value-transform</artifactId>
     <version>1.0.1</version>
     <packaging>jar</packaging>
 

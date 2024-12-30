@@ -29,7 +29,7 @@ The KeyToField transformation can be configured with the following properties:
 To use the `KeyToField` transformation, add it to your Kafka Connect connector configuration:
 ```
 transforms=keyToField
-transforms.keyToField.type=com.github.eladleev.kafka.connect.transform.keytofield.KeyToFieldTransform
+transforms.keyToField.type=com.vng.zshort.tools.connect.transform.wrapfieldvalue.WrapFieldValueTransform
 transforms.keyToField.field.name=primaryKey
 transforms.keyToField.field.delimiter=_
 ```
