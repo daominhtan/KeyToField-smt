@@ -6,7 +6,7 @@
 
     <!-- Define project coordinates -->
     <groupId>com.com.zshort.tools.connect.transform</groupId>
-    <artifactId>wrap-field-value-transform</artifactId>
+    <artifactId>normalizer-field-value-transform</artifactId>
     <version>1.0.1</version>
     <packaging>jar</packaging>
 

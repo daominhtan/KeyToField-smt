@@ -50,7 +50,7 @@ curl -X "POST" "http://localhost:8083/connectors" \
     "transforms.createKey.fields":"actor_id",
     "transforms.extractInt.type":"org.apache.kafka.connect.transforms.ExtractField$Key",
     "transforms.extractInt.field":"actor_id",
-    "transforms.keyToField.type": "com.vng.zshort.tools.connect.transform.wrapfieldvalue.WrapFieldValueTransform",
+    "transforms.keyToField.type": "com.vng.zshort.tools.connect.transform.normalizerfieldvalue.NormalizerFieldValueTransform",
     "transforms.keyToField.field.name":"primaryKey",
     "transforms.keyToField.field.delimiter": "_"
   }

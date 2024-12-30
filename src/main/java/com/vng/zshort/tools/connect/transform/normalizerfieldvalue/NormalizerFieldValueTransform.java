@@ -1,5 +1,6 @@
-package com.vng.zshort.tools.connect.transform.wrapfieldvalue;
+package com.vng.zshort.tools.connect.transform.normalizerfieldvalue;
 
+import com.vng.zshort.tools.connect.transform.normalizerfieldvalue.charfilter.*;
 import org.apache.kafka.common.cache.Cache;
 import org.apache.kafka.common.cache.LRUCache;
 import org.apache.kafka.common.cache.SynchronizedCache;
@@ -16,13 +17,25 @@ import org.apache.kafka.connect.transforms.util.SchemaUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.text.Normalizer;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.apache.kafka.connect.transforms.util.Requirements.requireMap;
 import static org.apache.kafka.connect.transforms.util.Requirements.requireStruct;
 
-public class WrapFieldValueTransform<R extends ConnectRecord<R>> implements Transformation<R> {
+public class NormalizerFieldValueTransform<R extends ConnectRecord<R>> implements Transformation<R> {
+
+    static Map<String, FilterInterface> filterMap = new HashMap() {{
+        put("long_space", LongSpaceFilter.INST);
+        put("strip_html", StripHtmlFilter.INST);
+        put("noise_char", NoiseCharFilter.INST);
+        put("under_line", UnderLineFilter.INST);
+    }};
+
+    List<FilterInterface> filters = new ArrayList<>();
 
     public static final String OVERVIEW_DOC = "Add the record key to the value as a named field.";
 
@@ -31,17 +44,13 @@ public class WrapFieldValueTransform<R extends ConnectRecord<R>> implements Tran
                     "Name of the field to insert the Kafka key to")
             .define("field.result", ConfigDef.Type.STRING, "wrap_result", ConfigDef.Importance.HIGH,
                     "Name of the field to insert the Kafka key to")
-            .define("wrapper.prefix", ConfigDef.Type.STRING, ",", ConfigDef.Importance.LOW,
-                    "Prefix to use when concatenating the key fields")
-            .define("wrapper.suffix", ConfigDef.Type.STRING, ",", ConfigDef.Importance.LOW,
-                    "Suffix to use when concatenating the key fields");
-
+            .define("field.filters", ConfigDef.Type.LIST, ",", ConfigDef.Importance.LOW,
+                    "Filters to use when provide list of filter");
     private static final String PURPOSE = "adding wrap value field to record";
-    private static final Logger LOGGER = LoggerFactory.getLogger(WrapFieldValueTransform.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(NormalizerFieldValueTransform.class);
     private String fieldName;
     private String fieldResult;
-    private String wrapperPrefix;
-    private String wrapperSuffix;
+    private List<String> fieldFilters;
     private Cache<Schema, Schema> schemaUpdateCache;
 
     @Override
@@ -49,8 +58,9 @@ public class WrapFieldValueTransform<R extends ConnectRecord<R>> implements Tran
         final SimpleConfig config = new SimpleConfig(CONFIG_DEF, props);
         fieldName = config.getString("field.name");
         fieldResult = config.getString("field.result");
-        wrapperPrefix = config.getString("wrapper.prefix");
-        wrapperSuffix = config.getString("wrapper.suffix");
+        fieldFilters = config.getList("field.filters");
+        System.out.println(">>>>> fieldFilter: " + fieldFilters);
+        System.out.println(">>>>> fieldFilter Size: " + fieldFilters.size());
         schemaUpdateCache = new SynchronizedCache<>(new LRUCache<>(16));
     }
 
@@ -74,11 +84,11 @@ public class WrapFieldValueTransform<R extends ConnectRecord<R>> implements Tran
         }
 
         Object fieldValue = value.getOrDefault(fieldName, "");
-        String wrapResult = wrapperPrefix + fieldValue + wrapperSuffix;
+        String result = normalize(fieldValue.toString());
 
-        value.put(fieldResult, wrapResult);
+        value.put(fieldResult, result);
 
-        LOGGER.trace("Wrap result string: {}", wrapResult);
+        LOGGER.trace("Wrap result string: {}", result);
         return record.newRecord(
                 record.topic(),
                 record.kafkaPartition(),
@@ -114,9 +124,9 @@ public class WrapFieldValueTransform<R extends ConnectRecord<R>> implements Tran
                 if (fieldValue == null) {
                     fieldValue = "";
                 }
-                String wrapResult = wrapperPrefix + fieldValue + wrapperSuffix;
-                updatedValue.put(fieldResult, wrapResult);
-                LOGGER.trace("Key as string: {}\nNew schema:{}", wrapResult, updatedValue.schema().fields());
+                String result = normalize(fieldValue.toString());
+                updatedValue.put(fieldResult, result);
+                LOGGER.trace("Key as string: {}\nNew schema:{}", result, updatedValue.schema().fields());
             }
         }
         LOGGER.trace("Updated value after fields: {}", updatedValue);
@@ -142,6 +152,18 @@ public class WrapFieldValueTransform<R extends ConnectRecord<R>> implements Tran
         LOGGER.trace("adding the new field: {}", fieldResult);
         newSchemabuilder.field(fieldResult, Schema.OPTIONAL_STRING_SCHEMA);
         return newSchemabuilder.build();
+    }
+
+    public String normalize(String input) {
+        String normalized = Normalizer.normalize(input, Normalizer.Form.NFD);
+        String result = normalized.replaceAll("\\p{M}", "");
+        for (String filterName : fieldFilters) {
+            FilterInterface filter = filterMap.get(filterName);
+            if (filter != null) {
+                result = filter.filter(result);
+            }
+        }
+        return result;
     }
 
     @Override
