@@ -59,8 +59,8 @@ public class NormalizerFieldValueTransform<R extends ConnectRecord<R>> implement
         fieldName = config.getString("field.name");
         fieldResult = config.getString("field.result");
         fieldFilters = config.getList("field.filters");
-        System.out.println(">>>>> fieldFilter: " + fieldFilters);
-        System.out.println(">>>>> fieldFilter Size: " + fieldFilters.size());
+        LOGGER.info("[configure] fieldFilter: {}", fieldFilters);
+        LOGGER.info("[configure] fieldFilter Size: {}", fieldFilters.size());
         schemaUpdateCache = new SynchronizedCache<>(new LRUCache<>(16));
     }
 
