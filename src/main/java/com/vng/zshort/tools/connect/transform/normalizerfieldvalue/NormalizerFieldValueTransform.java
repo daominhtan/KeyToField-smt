@@ -66,6 +66,9 @@ public class NormalizerFieldValueTransform<R extends ConnectRecord<R>> implement
 
     @Override
     public R apply(R record) {
+        if (record.value() == null) {
+            return record;
+        }
         if (record.valueSchema() == null) {
             return applySchemaless(record);
         } else {
