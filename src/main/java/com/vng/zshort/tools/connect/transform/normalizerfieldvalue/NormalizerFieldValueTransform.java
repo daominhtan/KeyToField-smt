@@ -155,10 +155,11 @@ public class NormalizerFieldValueTransform<R extends ConnectRecord<R>> implement
     }
 
     public String normalize(String input) {
-        String normalized = Normalizer.normalize(input, Normalizer.Form.NFC);
+        String normalized = Normalizer.normalize(input, Normalizer.Form.NFD);
         String result = normalized.replaceAll("\\p{M}", "")
                 .replace('Đ', 'D')
-                .replace('đ', 'd');
+                .replace('đ', 'd')
+                .toLowerCase();
         for (String filterName : fieldFilters) {
             FilterInterface filter = filterMap.get(filterName);
             if (filter != null) {
